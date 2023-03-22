@@ -18,7 +18,7 @@ module rad_solar_var
 
   real(r8), allocatable :: ref_band_irrad(:)  ! scaling will be relative to ref_band_irrad in each band
   real(r8), allocatable :: irrad(:)           ! solar irradiance at model timestep in each band
-  real(r8)              :: tsi_ref            ! total solar irradiance assumed by rrtmg                                                 
+  real(r8)              :: tsi_ref            ! total solar irradiance assumed by RRTMGP                                                 
 
   real(r8), allocatable :: radbinmax(:)
   real(r8), allocatable :: radbinmin(:)
