@@ -217,6 +217,7 @@ integer :: ngpt_sw
 integer, allocatable :: band2gpt_sw(:,:) ! n[s,l]wbands come from radconstants for now
 integer, allocatable :: band2gpt_lw(:,:)
 
+
 ! Gases to use in the radiative calculations. 
 ! RRTMGP kdist initialization needs to know the names of the
 ! gases before these are available via the rad_cnst interface. 
@@ -463,6 +464,7 @@ subroutine radiation_init(pbuf2d)
    use modal_aer_opt,   only: modal_aer_opt_init
    use rrtmgp_inputs,   only: rrtmgp_inputs_init
    use time_manager,    only: is_first_step
+   use radconstants,    only: set_number_sw_bands, set_number_lw_bands, set_wavenumber_bands, set_irrad_by_band, set_reference_tsi
 
    ! arguments
    type(physics_buffer_desc), pointer :: pbuf2d(:,:)
@@ -486,6 +488,7 @@ subroutine radiation_init(pbuf2d)
    integer :: ierr
 
    integer :: dtime
+   real(r8) :: ref_tsi
 
    character(len=*), parameter :: sub = 'radiation_init'
    !-----------------------------------------------------------------------
@@ -521,6 +524,29 @@ subroutine radiation_init(pbuf2d)
    ! kbotradm = nlay
    ! kbotradi = nlay + 1
 
+   call set_available_gases(active_gases, available_gases) ! gases needed to initialize spectral info
+
+   call coefs_init(coefs_lw_file, kdist_lw, available_gases, band2gpt_lw)
+   call coefs_init(coefs_sw_file, kdist_sw, available_gases, band2gpt_sw, ref_tsi) ! bpm : these now provide band2gpt which should be global
+   call set_reference_tsi(ref_tsi)
+
+   ! set number of sw/lw bands in radconstants
+   call set_number_sw_bands(kdist_sw%get_nband())
+   call set_number_lw_bands(kdist_lw%get_nband())
+
+   ! set the sw/lw band limits in radconstants
+   call set_wavenumber_bands('sw', kdist_sw%get_nband(), kdist_sw%get_band_lims_wavenumber()) 
+   call set_wavenumber_bands('lw', kdist_lw%get_nband(), kdist_lw%get_band_lims_wavenumber())
+
+   call rad_solar_var_init() ! sets the total solar irradiance (I wonder whether this should use kdist information instead of radconstants; alternative use kdist%set_tsi to ensure consistency?)
+   call rrtmgp_inputs_init(ktopcamm, ktopradm, ktopcami, ktopradi) ! this sets these values as module data in rrtmgp_inputs
+
+   call rad_data_init(pbuf2d)  ! initialize output fields for offline driver
+   call cloud_rad_props_init()
+  
+   ngpt_lw = kdist_lw%get_ngpt() ! these set global values
+   ngpt_sw = kdist_sw%get_ngpt()
+
    ! bpm: set the indices used for diagnostics using specific band:
    call get_idx_sw_diag() ! index to sw visible band (441 - 625 nm) 
    call get_idx_nir_diag() ! index to sw near infrared (778-1240 nm) band
@@ -530,21 +556,6 @@ subroutine radiation_init(pbuf2d)
       lw_cloudsim_band = get_band_index_by_value('lw', 10.5_r8, 'micron')
    end if
    call get_idx_lw_diag()
-
-
-   call set_available_gases(active_gases, available_gases) ! gases needed to initialize spectral info
-
-   ! initialize relevant data
-   call rad_solar_var_init() ! sets the total solar irradiance (I wonder whether this should use kdist information instead of radconstants; alternative use kdist%set_tsi to ensure consistency?)
-   call rrtmgp_inputs_init(ktopcamm, ktopradm, ktopcami, ktopradi) ! this sets these values as module data in rrtmgp_inputs
-
-   call coefs_init(coefs_lw_file, kdist_lw, available_gases, band2gpt_lw)
-   call coefs_init(coefs_sw_file, kdist_sw, available_gases, band2gpt_sw) ! bpm : these now provide band2gpt which should be global
-   call rad_data_init(pbuf2d)  ! initialize output fields for offline driver
-   call cloud_rad_props_init()
-  
-   ngpt_lw = kdist_lw%get_ngpt() ! these set global values
-   ngpt_sw = kdist_sw%get_ngpt()
 
 
    if (is_first_step()) then
@@ -592,6 +603,7 @@ subroutine radiation_init(pbuf2d)
    else
       cosp_cnt(begchunk:endchunk) = 0     
    end if
+
 
    ! Add fields to history buffer
 
@@ -968,7 +980,7 @@ subroutine radiation_tend( &
    real(r8), allocatable :: coszrs_day(:)
    real(r8), allocatable :: alb_dir(:,:)
    real(r8), allocatable :: alb_dif(:,:)
-   real(r8), allocatable :: tsi_scaling_gpt(:)
+   real(r8) :: tsi
 
 
    ! cloud radiative parameters are "in cloud" not "in cell"
@@ -1065,7 +1077,6 @@ subroutine radiation_tend( &
 
    integer :: iband
    integer :: nlevcam, nlevrad
-   real(r8) :: tsi 
    real(r8) :: mem_hw_end, mem_hw_beg, mem_end, mem_beg, temp
 
    !--------------------------------------------------------------------------------------
@@ -1205,8 +1216,7 @@ subroutine radiation_tend( &
          pint_day(nday,nlay+1),   &
          coszrs_day(nday),        &
          alb_dir(nswbands,nday),  &
-         alb_dif(nswbands,nday),  &
-         tsi_scaling_gpt(ngpt_sw) &
+         alb_dif(nswbands,nday)   &
       )
 
 
@@ -1234,13 +1244,13 @@ subroutine radiation_tend( &
          coszrs_day,     & ! output
          alb_dir,        & ! output
          alb_dif,        & ! output
-         tsi,            & ! output, total solar irradiance (not scaled)
-         tsi_scaling_gpt  & ! output, solar irradiance by gpoint
+         tsi             & ! output, total solar irradiance (not scaled)
          )
       nlevrad = size(t_rad,2)
 
-      !!--> set TSI based on radconstants
-      !!--> use scaling based on eccf & solar variability (file)
+      !!--> Set TSI used in radiation to the value in the solar forcing file.
+      !!--> This replaces get_variability() and does same thing. 
+      !!--> The Earth-Sun distance (eccf) provides another scaling, applied later.
       errmsg = kdist_sw%set_tsi(tsi) ! scales the TSI but does not change spectral distribution
       if (len_trim(errmsg) > 0) then
          call endrun(sub//': ERROR: kdist_sw%set_tsi: '//trim(errmsg))
@@ -1541,9 +1551,9 @@ subroutine radiation_tend( &
                                 fsw,      & ! inout
                                 fswc,     & ! inout 
                                 aer_props=aer_sw, & ! optional input (from rrtmgp_set_aer_sw)
-                                tsi_scaling_gpt=tsi_scaling_gpt*eccf & !< optional input, scaling for irradiance
+                                tsi_scaling=eccf & !< optional input, scaling for irradiance
                )
-                              !   tsi_scaling=eccf)  ! optional input, scaling
+
                call shr_mem_getusage(mem_hw_end, mem_end)
                temp = mem_hw_end - mem_hw_beg
                if (masterproc) then
@@ -2249,7 +2259,7 @@ end subroutine calc_col_mean
 
 !===============================================================================
 
-subroutine coefs_init(coefs_file, kdist, available_gases, band2gpt)
+subroutine coefs_init(coefs_file, kdist, available_gases, band2gpt, tsi_default)
 
    ! Read data from coefficients file.  Initialize the kdist object.
 
@@ -2257,6 +2267,8 @@ subroutine coefs_init(coefs_file, kdist, available_gases, band2gpt)
    character(len=*),                  intent(in)  :: coefs_file
    class(ty_gas_optics_rrtmgp),       intent(out) :: kdist
    class(ty_gas_concs),               intent(in)  :: available_gases ! Which gases does the host model have available?
+
+   real(r8), intent(out), optional :: tsi_default  ! RRTMGP reference TSI
 
    ! local variables
    type(file_desc_t)  :: fh    ! pio file handle
@@ -2310,7 +2322,7 @@ subroutine coefs_init(coefs_file, kdist, available_gases, band2gpt)
    integer, dimension(:), allocatable :: int2log   ! use this to convert integer-to-logical.
    integer, dimension(:),            allocatable :: kminor_start_lower, kminor_start_upper
    real(r8), dimension(:,:),         allocatable :: optimal_angle_fit
-   real(r8)                                      :: tsi_default, mg_default, sb_default
+   real(r8)                                      :: mg_default, sb_default
 
    integer :: pairs, &
               minorabsorbers, &
