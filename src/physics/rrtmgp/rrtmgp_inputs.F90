@@ -24,7 +24,7 @@ use camsrfexch,       only: cam_in_t
 use radconstants,     only: get_ref_solar_band_irrad, rad_gas_index
 use radconstants,     only: nradgas, gaslist, rrtmg_to_rrtmgp_swbands
 use rad_solar_var,    only: get_variability
-use solar_irrad_data, only : do_spctrl_scaling
+use solar_irrad_data, only : do_spctrl_scaling, sol_tsi
 use rad_constituents, only: rad_cnst_get_gas
 
 use mcica_subcol_gen, only: mcica_subcol_sw, mcica_subcol_lw
@@ -99,7 +99,7 @@ subroutine rrtmgp_set_state( &
    band2gpt_sw,    &
    t_sfc, emis_sfc, t_rad, &
    pmid_rad, pint_rad, t_day, pmid_day, pint_day, &
-   coszrs_day, alb_dir, alb_dif, tsi, tsi_scaling_gpt) 
+   coszrs_day, alb_dir, alb_dif, tsi) 
 
    ! arguments
    type(physics_state), target, intent(in) :: pstate
@@ -130,7 +130,7 @@ subroutine rrtmgp_set_state( &
    real(r8), intent(out) :: alb_dif(nswbands,nday)   ! surface albedo, diffuse radiation
    ! real(r8), intent(out) :: solin(ncol)             ! incident flux at domain top [W/m2]
    ! real(r8), intent(out) :: solar_irrad_gpt(nday,ngpt_sw)  ! incident flux at domain top per gpoint [W/m2] AT DAYLIT POINTS
-   real(r8), intent(out) :: tsi_scaling_gpt(ngpt_sw)  ! scale factor for irradiance by gpoint [fraction]
+   ! real(r8), intent(out) :: tsi_scaling_gpt(ngpt_sw)  ! scale factor for irradiance by gpoint [fraction]
    real(r8), intent(out) :: tsi ! total irradiance W/m2
 
    ! local variables
@@ -213,18 +213,25 @@ subroutine rrtmgp_set_state( &
    end do
  
 
-   ! Define solar incident radiation
-   call get_ref_solar_band_irrad(solar_band_irrad)
-   call get_variability(sfac)
-   solar_band_irrad = solar_band_irrad(rrtmg_to_rrtmgp_swbands)
-   tsi = sum(solar_band_irrad(:)) ! total TSI integrated across bands, BUT NOT scaled for variability
-   ! convert from irradiance scale factor per band (sfac) to per gpoint
-   ! --> this can then be used in rrtmgp_driver module, rte_sw to scale TOA flux
-   tsi_scaling_gpt = 0.0
+   ! total solar incident radiation
+   tsi = sol_tsi ! when using sol_tsi from solar_irrad_data, this is read from a file.
 
-   do iband = 1,nswbands
-      tsi_scaling_gpt(band2gpt_sw(1,iband):band2gpt_sw(2,iband)) = sfac(iband)
-   end do
+   ! TO BE REMOVED
+   ! We can get TSI from the solar forcing file (above).
+   ! We can't get the scaling here because we might not have access
+   ! to RRTMGP's reference irradiance on bands yet (without running kdist%gas_optics).
+   ! The scaling can be derived in rrtmgp_driver / rte_sw (after %gas_optics provides the toa_flux).
+   ! call get_ref_solar_band_irrad(solar_band_irrad)
+   ! call get_variability(sfac)
+   ! solar_band_irrad = solar_band_irrad(rrtmg_to_rrtmgp_swbands)
+   ! tsi = sum(solar_band_irrad(:)) ! total TSI integrated across bands, BUT NOT scaled for variability
+   ! ! convert from irradiance scale factor per band (sfac) to per gpoint
+   ! ! --> this can then be used in rrtmgp_driver module, rte_sw to scale TOA flux
+   ! tsi_scaling_gpt = 0.0
+
+   ! do iband = 1,nswbands
+   !    tsi_scaling_gpt(band2gpt_sw(1,iband):band2gpt_sw(2,iband)) = sfac(iband)
+   ! end do
 
    ! if we had a method to produce toa flux by gpoint, we could make that an output here.
 
