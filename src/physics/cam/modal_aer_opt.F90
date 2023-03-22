@@ -1439,6 +1439,7 @@ subroutine modal_aero_lw(list_idx, state, pbuf, tauxar)
       deallocate(drymass_m)
       deallocate(so4dryvol_m)
       deallocate(naer_m)
+      deallocate(crefwlw)
    end if
 
 end subroutine modal_aero_lw
@@ -1464,6 +1465,7 @@ subroutine read_water_refindex(infilename)
    real(r8) :: refrwlw(nlwbands), refiwlw(nlwbands) ! real, imaginary ref index for water infrared
    !----------------------------------------------------------------------------
    allocate(crefwsw(nswbands))
+   allocate(crefwlw(nlwbands))
    ! open file
    call cam_pio_openfile(ncid, infilename, PIO_NOWRITE)
 
