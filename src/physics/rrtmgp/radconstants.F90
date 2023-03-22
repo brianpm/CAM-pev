@@ -21,8 +21,9 @@ private
 save
 
 ! Number of bands in SW and LW (these will be set when RRTMGP initializes)
-integer, public, protected :: nswbands
-integer, public, protected :: nlwbands
+integer, public, protected :: nswbands = 14
+integer, public, protected :: nlwbands = 16
+
 ! Band limits (these get also get set at initialization)
 real(r8), public, allocatable :: wavenumber_low_shortwave(:)
 real(r8), public, allocatable :: wavenumber_high_shortwave(:)
