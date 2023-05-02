@@ -601,7 +601,7 @@ subroutine modal_aero_sw(list_idx, state, pbuf, nnite, idxnite, &
 
    lchnk = state%lchnk
    ncol  = state%ncol
-   allocate(crefwsw(nswbands))
+   if (.not. allocated(crefwsw)) allocate(crefwsw(nswbands))
    ! initialize output variables
    tauxar(:ncol,:,:) = 0._r8
    wa(:ncol,:,:)     = 0._r8
@@ -1257,7 +1257,7 @@ subroutine modal_aero_lw(list_idx, state, pbuf, tauxar)
 
    lchnk = state%lchnk
    ncol  = state%ncol
-   allocate(crefwlw(nlwbands))
+   if (.not. allocated(crefwlw)) allocate(crefwlw(nlwbands))
    ! initialize output variables
    tauxar(:ncol,:,:) = 0._r8
 
@@ -1464,8 +1464,8 @@ subroutine read_water_refindex(infilename)
    real(r8) :: refrwsw(nswbands), refiwsw(nswbands) ! real, imaginary ref index for water visible
    real(r8) :: refrwlw(nlwbands), refiwlw(nlwbands) ! real, imaginary ref index for water infrared
    !----------------------------------------------------------------------------
-   allocate(crefwsw(nswbands))
-   allocate(crefwlw(nlwbands))
+   if (.not. allocated(crefwsw)) allocate(crefwsw(nswbands))
+   if (.not. allocated(crefwlw)) allocate(crefwlw(nlwbands))
    ! open file
    call cam_pio_openfile(ncid, infilename, PIO_NOWRITE)
 

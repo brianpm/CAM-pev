@@ -533,6 +533,7 @@ subroutine radiation_init(pbuf2d)
    ! set number of sw/lw bands in radconstants
    call set_number_sw_bands(kdist_sw%get_nband())
    call set_number_lw_bands(kdist_lw%get_nband())
+   write(iulog, *) 'rad_init: NUMBER SW BANDS: ',kdist_sw%get_nband(),' NUMBER LW BANDS: ',kdist_lw%get_nband()
 
    ! set the sw/lw band limits in radconstants
    call set_wavenumber_bands('sw', kdist_sw%get_nband(), kdist_sw%get_band_lims_wavenumber()) 
